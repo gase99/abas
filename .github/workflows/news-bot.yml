@@ -35,7 +35,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest -q
+        run: pytest -m pytest -q
 
       - name: Verify Telegram secrets
         env:
