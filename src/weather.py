@@ -12,16 +12,21 @@ logger = logging.getLogger(__name__)
 
 # WMO weather code groups used by Open-Meteo.
 WEATHER_CODE_GROUPS = [
-    (range(0, 1), "صاف"),
-    (range(1, 4), "نیمه‌ابری"),
-    (range(4, 20), "ابری"),
-    (range(45, 49), "مه"),
-    (range(51, 58), "نم‌نم باران"),
-    (range(61, 68), "باران"),
-    (range(71, 78), "برف"),
-    (range(80, 83), "رگبار"),
-    (range(85, 87), "رگبار برف"),
-    (range(95, 100), "رعدوبرق"),
+    ({0}, "صاف"),
+    ({1}, "عمدتاً صاف"),
+    ({2}, "نیمه‌ابری"),
+    ({3}, "ابری"),
+    ({45, 48}, "مه"),
+    ({51, 53, 55}, "نم‌ن باران"),
+    ({56, 57}, "نم‌ن باران یخ‌زده"),
+    ({61, 63, 65}, "باران"),
+    ({66, 67}, "باران یخ‌زده"),
+    ({71, 73, 75}, "برف"),
+    ({77}, "دانه‌های برف"),
+    ({80, 81, 82}, "رگبار باران"),
+    ({85, 86}, "رگبار برف"),
+    ({95}, "رعدوبرق"),
+    ({96, 99}, "رعدوبرق همراه با تگرگ"),
 ]
 
 
@@ -80,6 +85,7 @@ def _request_forecast(city_batch):
     response = requests.get(
         config.OPEN_METEO_URL,
         params=params,
+        headers=config.DEFAULT_HEADERS,
         timeout=config.OPEN_METEO_TIMEOUT,
     )
     response.raise_for_status()

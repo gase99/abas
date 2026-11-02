@@ -111,12 +111,23 @@ def run():
 
     forecast_sent = 0
     if forecast_pending and weather_budget > weather_sent:
-        text = format_weather_message(forecast)
-        if send_to_telegram(text, token=token, channel_id=channel_id):
+        texts = format_weather_message(forecast)
+        if isinstance(texts, str):
+            texts = [texts]
+        forecast_ok = True
+        for text in texts:
+            if not send_to_telegram(text, token=token, channel_id=channel_id):
+                forecast_ok = False
+                break
+        if forecast_ok:
             posted.append(forecast_key)
             seen.add(forecast_key)
-            forecast_sent = 1
-            logger.info("Published forecast for %d cities", len(forecast))
+            forecast_sent = len(texts)
+            logger.info(
+                "Published forecast for %d cities in %d message(s)",
+                len(forecast),
+                len(texts),
+            )
         else:
             logger.warning("Forecast send failed")
 
@@ -133,10 +144,12 @@ def run():
 def main():
     _setup_logging()
     try:
-        run()
+        sent = run()
     except RuntimeError as exc:
         logger.error("Configuration error: %s", exc)
         raise SystemExit(1) from exc
+    if sent == 0:
+        logging.info("Sent 0 messages this run")
 
 
 if __name__ == "__main__":

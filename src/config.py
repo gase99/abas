@@ -11,6 +11,13 @@ POSTED_FILE = BASE_DIR / "posted.json"
 # Load .env for local runs. GitHub Actions provides the variables as secrets.
 load_dotenv(BASE_DIR / ".env")
 
+# Common browser-like headers used for all outbound HTTP requests so Iranian
+# news sites and Open-Meteo do not block the bot as a generic script.
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+    "Accept-Language": "fa-IR,fa;q=0.9,en;q=0.8",
+}
+
 # Maximum number of ordinary news posts and weather posts per run.
 MAX_NEWS_POSTS = 5
 MAX_WEATHER_POSTS = 3

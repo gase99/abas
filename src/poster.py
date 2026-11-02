@@ -3,6 +3,7 @@
 import html
 import json
 import logging
+import time
 from pathlib import Path
 
 import requests
@@ -15,6 +16,9 @@ TELEGRAM_TIMEOUT = 20
 MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 MAX_POSTED_ENTRIES = 2000
 KHUZESTAN_TAG = "🔶 خوزستان"
+
+# Safe margin under the Telegram 4096-character limit for forecast messages.
+WEATHER_MESSAGE_LIMIT = 3500
 
 
 def load_posted(path=None):
@@ -80,42 +84,121 @@ def format_message(item):
 
 
 def format_weather_message(weather_data):
-    """Build the daily Khuzestan forecast message."""
-    lines = [KHUZESTAN_TAG, "🌤️ پیش‌بینی آب و هوای خوزستان", ""]
+    """Build the daily Khuzestan forecast message(s).
 
+    Each returned message is at most WEATHER_MESSAGE_LIMIT characters so long
+    forecasts are never truncated. A list is always returned; callers should
+    send every member separately.
+    """
+    header = "\n".join([KHUZESTAN_TAG, "🌤️ پیش‌بینی آب و هوای خوزستان", ""])
+
+    entries = []
     for entry in weather_data:
-        lines.append(
+        entries.append(
             "📍 {city}: بیشینه {temp_max}°C / کمینه {temp_min}°C — "
             "احتمال بارش {precipitation}% — {description}".format(
                 city=html.escape(str(entry.get("city", ""))),
                 temp_max=entry.get("temp_max", "-"),
                 temp_min=entry.get("temp_min", "-"),
                 precipitation=entry.get("precipitation_probability", 0),
-                description=html.escape(str(entry.get("weather_description", "نامشخص"))),
+                description=html.escape(
+                    str(entry.get("weather_description", "نامشخص"))
+                ),
             )
         )
 
-    text = "\n".join(lines).strip()
-    return truncate(text, MAX_TELEGRAM_MESSAGE_LENGTH)
+    messages = []
+    current = header
+    for entry_text in entries:
+        candidate = current + "\n" + entry_text if current else entry_text
+        if len(candidate) > WEATHER_MESSAGE_LIMIT and current != header:
+            messages.append(current.strip())
+            current = header + "\n" + entry_text
+        else:
+            current = candidate
+
+    if current.strip():
+        messages.append(current.strip())
+    if not messages:
+        messages.append(header.strip())
+    return messages
 
 
-def send_to_telegram(text, token=None, channel_id=None):
-    """Send one HTML message to the configured Telegram channel."""
+def send_to_telegram(texts, token=None, channel_id=None):
+    """Send one or more HTML messages to the configured Telegram channel.
+
+    Accepts a string or a list of strings; every member is sent separately.
+    Never raises: returns True only when every message was accepted.
+    """
     if token is None or channel_id is None:
         token, channel_id = config.get_telegram_credentials()
 
-    url = f"{config.TELEGRAM_API_URL}/bot{token}/sendMessage"
-    payload = {
-        "chat_id": channel_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }
+    if isinstance(texts, str):
+        texts = [texts]
 
+    url = f"{config.TELEGRAM_API_URL}/bot{token}/sendMessage"
+    for text in texts:
+        payload = {
+            "chat_id": channel_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        if not _send_one(url, payload):
+            return False
+    return True
+
+
+def _retry_after(response):
+    """Read Telegram's retry_after seconds from a 429 response (default 5)."""
+    try:
+        return int(response.json().get("parameters", {}).get("retry_after", 5))
+    except (ValueError, TypeError, AttributeError):
+        return 5
+
+
+def _send_one(url, payload):
+    """Send a single payload with 429/5xx retries; never raises."""
     try:
         response = requests.post(url, data=payload, timeout=TELEGRAM_TIMEOUT)
     except requests.RequestException as exc:
         logger.error("Telegram request failed: %s", exc)
+        return False
+
+    # 429 rate limit: exactly one retry, honoring retry_after when provided.
+    if response.status_code == 429:
+        delay = _retry_after(response)
+        logger.warning("Telegram rate limited (429); retrying after %ss", delay)
+        time.sleep(delay)
+        try:
+            response = requests.post(url, data=payload, timeout=TELEGRAM_TIMEOUT)
+        except requests.RequestException as exc:
+            logger.error("Telegram 429 retry request failed: %s", exc)
+            return False
+
+    # 5xx server errors: up to 2 retries, 3 seconds apart.
+    if response.status_code >= 500:
+        for attempt in range(1, 3):
+            logger.warning(
+                "Telegram returned %s; retry %d/2 after 3s",
+                response.status_code,
+                attempt,
+            )
+            time.sleep(3)
+            try:
+                response = requests.post(url, data=payload, timeout=TELEGRAM_TIMEOUT)
+            except requests.RequestException as exc:
+                logger.error("Telegram 5xx retry request failed: %s", exc)
+                return False
+            if response.status_code < 500:
+                break
+
+    if 400 <= response.status_code < 500:
+        logger.error(
+            "Telegram returned %s: %s",
+            response.status_code,
+            truncate(response.text, 500),
+        )
         return False
 
     if response.status_code != 200:

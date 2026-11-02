@@ -7,7 +7,6 @@ import re
 import feedparser
 import requests
 
-USER_AGENT = "TelegramNewsWeatherBot/1.0 (+https://github.com/)"
 REQUEST_TIMEOUT = 20
 MAX_ENTRIES_PER_FEED = 40
 
@@ -34,19 +33,25 @@ def fetch_feed(url, source, use_cache=True):
     if use_cache and url in _feed_cache:
         return [dict(item, source=source) for item in _feed_cache[url]]
 
+    content = None
     try:
         response = requests.get(
             url,
-            headers={"User-Agent": USER_AGENT},
+            headers=config.DEFAULT_HEADERS,
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
+        content = response.content
     except requests.RequestException as exc:
-        logger.warning("Could not download feed %s (%s): %s", source, url, exc)
-        return []
+        logger.warning(
+            "Could not download feed %s (%s): %s; falling back to feedparser",
+            source,
+            url,
+            exc,
+        )
 
     try:
-        parsed = feedparser.parse(response.content)
+        parsed = feedparser.parse(content if content is not None else url)
     except Exception as exc:  # A malformed feed must not stop other sources.
         logger.warning("Could not parse feed %s (%s): %s", source, url, exc)
         return []
