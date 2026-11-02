@@ -49,6 +49,14 @@ jobs:
             exit 1
           fi
 
+      - name: Debug Environment
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: |
+          echo "Token exists: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo True || echo False)"
+          echo "Channel ID exists: $([ -n "$TELEGRAM_CHANNEL_ID" ] && echo True || echo False)"
+
       - name: Run the bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
