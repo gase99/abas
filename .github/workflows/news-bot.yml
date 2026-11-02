@@ -53,6 +53,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          PYTHONPATH: ${{ github.workspace }}
         run: python -m src.main
 
       - name: Commit updated posted.json
