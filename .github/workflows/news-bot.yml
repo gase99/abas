@@ -35,7 +35,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}
 
       - name: Verify Telegram secrets
         env:
