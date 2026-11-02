@@ -131,7 +131,11 @@ def send_to_telegram(texts, token=None, channel_id=None):
     Never raises: returns True only when every message was accepted.
     """
     if token is None or channel_id is None:
-        token, channel_id = config.get_telegram_credentials()
+        try:
+            token, channel_id = config.get_telegram_credentials()
+        except RuntimeError as exc:
+            logger.error("Telegram credentials missing: %s", exc)
+            return False
 
     if isinstance(texts, str):
         texts = [texts]

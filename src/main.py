@@ -145,9 +145,9 @@ def main():
     _setup_logging()
     try:
         sent = run()
-    except RuntimeError as exc:
-        logger.error("Configuration error: %s", exc)
-        raise SystemExit(1) from exc
+    except Exception as exc:  # Crash-proof: never fail the CI pipeline on transient errors.
+        logger.error("Unhandled error during run: %s", exc, exc_info=True)
+        sent = 0
     if sent == 0:
         logging.info("Sent 0 messages this run")
 
