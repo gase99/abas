@@ -6,6 +6,7 @@ import re
 
 import feedparser
 import requests
+from . import config
 
 REQUEST_TIMEOUT = 20
 MAX_ENTRIES_PER_FEED = 40
