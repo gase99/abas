@@ -15,10 +15,28 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TIMEOUT = 20
 MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 MAX_POSTED_ENTRIES = 2000
-KHUZESTAN_TAG = "🔶 خوزستان"
 
 # Safe margin under the Telegram 4096-character limit for forecast messages.
 WEATHER_MESSAGE_LIMIT = 3500
+
+# Mapping of feed source names to friendly Persian display names.
+SOURCE_NAME_MAP = {
+    "BBC Persian": "بی‌بی‌سی فارسی",
+    "Iran International": "ایران اینترنشنال",
+    "IRNA": "ایرنا",
+    "ISNA": "ایسنا",
+    "Khabaronline": "خبرآنلاین",
+    "Mehr Khuzestan": "مهر خوزستان",
+    "Sahebkhabar": "صاحبخبر",
+    "Borna": "برنا",
+    "Khuzestan Bartar": "خوزستان برتر",
+    "Fars Khuzestan": "فارس خوزستان",
+}
+
+
+def _nice_source_name(source: str) -> str:
+    """Return a friendly Persian name for a feed source."""
+    return SOURCE_NAME_MAP.get(source, source)
 
 
 def load_posted(path=None):
@@ -60,67 +78,103 @@ def truncate(text, limit):
 
 
 def format_message(item):
-    """Build the Telegram text for a news item."""
+    """Build the Telegram text for a news item using HTML.
+
+    Format:
+        🔶 <b>#خوزستان</b>   (only when the item is Khuzestan-related)
+
+        <b>{title}</b>
+
+        <i>{summary}</i>
+
+        📌 منبع: {source_name}
+
+    The raw link is intentionally omitted to keep the message clean.
+    """
     lines = []
+
     if item.get("is_khuzestan"):
-        lines.append(KHUZESTAN_TAG)
+        lines.append("🔶 <b>#خوزستان</b>")
+        lines.append("")
 
     title = html.escape(item.get("title", "").strip())
     lines.append(f"<b>{title}</b>")
+    lines.append("")
 
     summary = (item.get("summary") or "").strip()
     if summary:
-        lines.append(html.escape(truncate(summary, config.SUMMARY_MAX_LENGTH)))
+        lines.append(
+            f"<i>{html.escape(truncate(summary, config.SUMMARY_MAX_LENGTH))}</i>"
+        )
+        lines.append("")
 
     source = (item.get("source") or "").strip()
     if source:
-        lines.append(f"منبع: {html.escape(source)}")
+        nice_source = _nice_source_name(source)
+        lines.append(f"📌 منبع: {html.escape(nice_source)}")
 
-    link = (item.get("link") or "").strip()
-    if link:
-        lines.append(html.escape(link, quote=False))
-
-    return "\n\n".join(lines)
+    return "\n".join(lines)
 
 
 def format_weather_message(weather_data):
-    """Build the daily Khuzestan forecast message(s).
+    """Build the daily Khuzestan forecast message(s) with blockquote.
 
     Each returned message is at most WEATHER_MESSAGE_LIMIT characters so long
     forecasts are never truncated. A list is always returned; callers should
     send every member separately.
     """
-    header = "\n".join([KHUZESTAN_TAG, "🌤️ پیش‌بینی آب و هوای خوزستان", ""])
+    header = "🌤️ <b>پیش‌بینی آب و هوای خوزستان</b>"
 
     entries = []
     for entry in weather_data:
+        city = html.escape(str(entry.get("city", "")))
+        temp_max = entry.get("temp_max", "-")
+        temp_min = entry.get("temp_min", "-")
+        precipitation = entry.get("precipitation_probability", 0)
+        description = html.escape(
+            str(entry.get("weather_description", "نامشخص"))
+        )
+
         entries.append(
-            "📍 {city}: بیشینه {temp_max}°C / کمینه {temp_min}°C — "
-            "احتمال بارش {precipitation}% — {description}".format(
-                city=html.escape(str(entry.get("city", ""))),
-                temp_max=entry.get("temp_max", "-"),
-                temp_min=entry.get("temp_min", "-"),
-                precipitation=entry.get("precipitation_probability", 0),
-                description=html.escape(
-                    str(entry.get("weather_description", "نامشخص"))
-                ),
-            )
+            f"📍 <b>{city}</b>: بیشینه {temp_max}°C / کمینه {temp_min}°C — "
+            f"احتمال بارش {precipitation}% — {description}"
+        )
+
+    def build_message(block_entries: list) -> str:
+        inner = "\n".join(block_entries)
+        return (
+            f"{header}\n\n"
+            f"<blockquote>\n{inner}\n</blockquote>"
         )
 
     messages = []
-    current = header
-    for entry_text in entries:
-        candidate = current + "\n" + entry_text if current else entry_text
-        if len(candidate) > WEATHER_MESSAGE_LIMIT and current != header:
-            messages.append(current.strip())
-            current = header + "\n" + entry_text
-        else:
-            current = candidate
+    current_entries = []
+    current_length = len(header) + len("<blockquote>\n\n</blockquote>")
 
-    if current.strip():
-        messages.append(current.strip())
+    for entry_text in entries:
+        entry_addition = ("\n" + entry_text) if current_entries else entry_text
+        trial_length = current_length + len(entry_addition)
+        if trial_length > WEATHER_MESSAGE_LIMIT and current_entries:
+            messages.append(build_message(current_entries))
+            current_entries = [entry_text]
+            current_length = (
+                len(header)
+                + len("<blockquote>\n")
+                + len(entry_text)
+                + len("\n</blockquote>")
+            )
+        else:
+            current_entries.append(entry_text)
+            current_length = trial_length
+
+    if current_entries:
+        messages.append(build_message(current_entries))
+
     if not messages:
-        messages.append(header.strip())
+        messages.append(
+            f"{header}\n\n<blockquote>\nهیچ اطلاعات هواشناسی در حال حاضر موجود نیست.\n</blockquote>"
+        )
+
     return messages
 
 

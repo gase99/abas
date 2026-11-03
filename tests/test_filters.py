@@ -43,7 +43,8 @@ def test_khuzestan_news_gets_tag():
     accepted = filter_items([item])
     assert len(accepted) == 1
     assert accepted[0]["is_khuzestan"] is True
-    assert "🔶 خوزستان" in format_message(accepted[0])
+    assert "🔶" in format_message(accepted[0])
+    assert "#خوزستان" in format_message(accepted[0])
 
 
 def test_violent_news_is_rejected():
@@ -135,10 +136,10 @@ def test_weather_message_format():
     assert isinstance(messages, list)
     text = messages[0]
     assert "پیش‌بینی آب و هوای خوزستان" in text
-    assert "📍 اهواز" in text
+    assert "اهواز" in text
+    assert "📍" in text
     assert "بیشینه 34.3°C" in text
     assert "احتمال بارش 8%" in text
-    assert "🔶 خوزستان" in text
 
 
 def test_format_weather_message_splits_into_chunks():
